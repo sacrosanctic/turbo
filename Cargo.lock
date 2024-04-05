@@ -4422,17 +4422,18 @@ dependencies = [
 
 [[package]]
 name = "lightningcss"
-version = "1.0.0-alpha.51"
+version = "1.0.0-alpha.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99d6ad516c08b24c246b339159dc2ee2144c012e8ebdf4db4bddefb8734b2b69"
+checksum = "07d306844e5af1753490c420c0d6ae3d814b00725092d106332762827ca8f0fe"
 dependencies = [
- "ahash 0.7.8",
+ "ahash 0.8.9",
  "bitflags 2.4.0",
  "const-str",
  "cssparser",
  "cssparser-color",
  "dashmap",
  "data-encoding",
+ "getrandom",
  "itertools 0.10.5",
  "lazy_static",
  "lightningcss-derive",
