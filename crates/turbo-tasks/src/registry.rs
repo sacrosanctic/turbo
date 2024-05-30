@@ -1,9 +1,10 @@
-use std::{fmt::Debug, hash::Hash, ops::Deref};
+use std::{borrow::Cow, fmt::Debug, hash::Hash, ops::Deref};
 
 use dashmap::{mapref::entry::Entry, DashMap};
 use once_cell::sync::Lazy;
 
 use crate::{
+    backend::PersistentTaskType,
     id::{FunctionId, TraitTypeId, ValueTypeId},
     id_factory::IdFactory,
     no_move_vec::NoMoveVec,
@@ -145,4 +146,18 @@ pub fn get_trait(id: TraitTypeId) -> &'static TraitType {
 
 pub fn get_trait_type_global_name(id: TraitTypeId) -> &'static str {
     TRAIT_TYPES.get(*id as usize).unwrap().1
+}
+
+/// Looks up the given `PersistentTaskType`'s function or trait, and converts it
+/// to a human-readable name.
+pub fn get_function_name(task_type: &PersistentTaskType) -> Cow<'static, str> {
+    match task_type {
+        PersistentTaskType::Native(native_fn, _)
+        | PersistentTaskType::ResolveNative(native_fn, _) => {
+            Cow::Borrowed(&get_function(*native_fn).name)
+        }
+        PersistentTaskType::ResolveTrait(trait_id, fn_name, _) => {
+            format!("{}::{}", get_trait(*trait_id).name, fn_name).into()
+        }
+    }
 }

@@ -15,6 +15,7 @@ mod map_guard;
 mod memory_backend;
 mod memory_backend_with_pg;
 mod output;
+mod statistics;
 mod task;
 
 pub use memory_backend::MemoryBackend;
