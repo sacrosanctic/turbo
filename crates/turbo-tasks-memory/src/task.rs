@@ -34,6 +34,7 @@ use crate::{
     cell::Cell,
     gc::{GcQueue, GcTaskState},
     output::{Output, OutputContent},
+    statistics,
     task::aggregation::{TaskAggregationContext, TaskChange},
     MemoryBackend,
 };
@@ -522,7 +523,7 @@ impl Task {
 
     pub(crate) fn get_function_name(&self) -> Option<Cow<'static, str>> {
         if let TaskType::Persistent { ty, .. } = &self.ty {
-            Some(registry::get_function_name(ty))
+            Some(ty.get_name())
         } else {
             None
         }
@@ -717,6 +718,9 @@ impl Task {
         };
         aggregation_context.apply_queued_updates();
         self.clear_dependencies(dependencies, backend, turbo_tasks);
+        if let TaskType::Persistent { ty } = &self.ty {
+            statistics::increment_execution_count(ty);
+        }
         Some(TaskExecutionSpec { future, span })
     }
 
@@ -1443,6 +1447,10 @@ impl Task {
             Done { .. } => {
                 let result = func(&mut state.output)?;
                 drop(state);
+
+                if let TaskType::Persistent { ty } = &self.ty {
+                    statistics::increment_finished_read_count(ty);
+                }
 
                 Ok(Ok(result))
             }

@@ -79,14 +79,7 @@ pub enum PersistentTaskType {
 
 impl Display for PersistentTaskType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Native(fid, _) | Self::ResolveNative(fid, _) => {
-                Display::fmt(&registry::get_function(*fid).name, f)
-            }
-            Self::ResolveTrait(tid, n, _) => {
-                write!(f, "{}::{n}", registry::get_trait(*tid).name)
-            }
-        }
+        f.write_str(&self.get_name())
     }
 }
 
@@ -123,6 +116,23 @@ impl PersistentTaskType {
             }
             PersistentTaskType::ResolveTrait(f, n, v) => {
                 PersistentTaskType::ResolveTrait(*f, n.clone(), v[..len].to_vec())
+            }
+        }
+    }
+
+    /// Returns the name of the function in the code. Trait methods are
+    /// formatted as [`TraitName::method_name`].
+    ///
+    /// Equivalent to [`ToString::to_string`], but potentially more efficient as
+    /// it can return a `&'static str` in many cases.
+    pub fn get_name(&self) -> Cow<'static, str> {
+        match self {
+            PersistentTaskType::Native(native_fn, _)
+            | PersistentTaskType::ResolveNative(native_fn, _) => {
+                Cow::Borrowed(&registry::get_function(*native_fn).name)
+            }
+            PersistentTaskType::ResolveTrait(trait_id, fn_name, _) => {
+                format!("{}::{}", registry::get_trait(*trait_id).name, fn_name).into()
             }
         }
     }

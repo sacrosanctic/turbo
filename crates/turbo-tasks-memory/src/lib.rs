@@ -20,3 +20,4 @@ mod task;
 
 pub use memory_backend::MemoryBackend;
 pub use memory_backend_with_pg::MemoryBackendWithPersistedGraph;
+pub use statistics::{enable_statistics, get_all_statistics, AllTasksStatistics};
