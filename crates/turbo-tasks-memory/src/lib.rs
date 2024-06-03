@@ -15,9 +15,9 @@ mod map_guard;
 mod memory_backend;
 mod memory_backend_with_pg;
 mod output;
-mod statistics;
 mod task;
+mod task_statistics;
 
 pub use memory_backend::MemoryBackend;
 pub use memory_backend_with_pg::MemoryBackendWithPersistedGraph;
-pub use statistics::{enable_statistics, get_all_statistics, AllTasksStatistics};
+pub use task_statistics::AllTasksStatistics;

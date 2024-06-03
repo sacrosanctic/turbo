@@ -34,7 +34,6 @@ use crate::{
     cell::Cell,
     gc::{GcQueue, GcTaskState},
     output::{Output, OutputContent},
-    statistics,
     task::aggregation::{TaskAggregationContext, TaskChange},
     MemoryBackend,
 };
@@ -719,7 +718,7 @@ impl Task {
         aggregation_context.apply_queued_updates();
         self.clear_dependencies(dependencies, backend, turbo_tasks);
         if let TaskType::Persistent { ty } = &self.ty {
-            statistics::increment_execution_count(ty);
+            backend.task_statistics().increment_execution_count(ty);
         }
         Some(TaskExecutionSpec { future, span })
     }
@@ -1449,7 +1448,7 @@ impl Task {
                 drop(state);
 
                 if let TaskType::Persistent { ty } = &self.ty {
-                    statistics::increment_finished_read_count(ty);
+                    backend.task_statistics().increment_finished_read_count(ty);
                 }
 
                 Ok(Ok(result))

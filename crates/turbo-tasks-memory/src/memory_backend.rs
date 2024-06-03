@@ -33,6 +33,7 @@ use crate::{
     gc::{GcQueue, PERCENTAGE_IDLE_TARGET_MEMORY, PERCENTAGE_TARGET_MEMORY},
     output::Output,
     task::{Task, TaskDependency, TaskDependencySet, DEPENDENCIES_TO_TRACK},
+    task_statistics::AllTasksStatistics,
 };
 
 fn prehash_task_type(task_type: PersistentTaskType) -> PreHashed<PersistentTaskType> {
@@ -48,6 +49,7 @@ pub struct MemoryBackend {
     memory_limit: usize,
     gc_queue: Option<GcQueue>,
     idle_gc_active: AtomicBool,
+    task_statistics: AllTasksStatistics,
 }
 
 impl Default for MemoryBackend {
@@ -70,6 +72,7 @@ impl MemoryBackend {
             memory_limit,
             gc_queue: (memory_limit != usize::MAX).then(GcQueue::new),
             idle_gc_active: AtomicBool::new(false),
+            task_statistics: AllTasksStatistics::default(),
         }
     }
 
@@ -229,6 +232,10 @@ impl MemoryBackend {
                 task.schedule_when_dirty_from_aggregation(self, turbo_tasks)
             });
         }
+    }
+
+    pub fn task_statistics(&self) -> &AllTasksStatistics {
+        &self.task_statistics
     }
 }
 

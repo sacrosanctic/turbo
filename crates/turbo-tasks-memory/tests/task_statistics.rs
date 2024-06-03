@@ -1,28 +1,49 @@
 #![feature(arbitrary_self_types)]
 
+use std::{future::Future, sync::Arc};
+
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::json;
-use turbo_tasks::Vc;
-use turbo_tasks_memory::{enable_statistics, get_all_statistics};
-use turbo_tasks_testing::{register, run};
+use turbo_tasks::{TurboTasks, Vc};
+use turbo_tasks_memory::MemoryBackend;
+use turbo_tasks_testing::register;
 
 register!();
 
 #[tokio::test]
 async fn statistics_counts() {
-    run! {
-        enable_statistics();
+    run_with_tt(|tt| async move {
         for i in 0..100 {
             let _ = double(i).await;
         }
-        assert_eq!(remove_hashes(serde_json::to_value(get_all_statistics()).unwrap()), json!({
-            "turbo_tasks_memory::::double": {
-                "execution_count": 100,
-                "finished_read_count": 100,
-            }
-        }));
-    }
+        assert_eq!(
+            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            json!({
+                "turbo_tasks_memory::::double": {
+                    "execution_count": 100,
+                    "finished_read_count": 100,
+                }
+            })
+        );
+    })
+    .await;
+}
+
+async fn run_with_tt<Fut>(func: impl FnOnce(Arc<TurboTasks<MemoryBackend>>) -> Fut)
+where
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    *REGISTER;
+    let tt = TurboTasks::new(MemoryBackend::default());
+    tt.backend().task_statistics().enable();
+    let fut = func(Arc::clone(&tt));
+    tt.run_once(async move {
+        fut.await;
+        Ok(())
+    })
+    .await
+    .unwrap();
 }
 
 #[turbo_tasks::function]
