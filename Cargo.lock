@@ -10299,6 +10299,7 @@ dependencies = [
  "priority-queue",
  "rand 0.8.5",
  "ref-cast",
+ "regex",
  "rstest",
  "rustc-hash",
  "serde",

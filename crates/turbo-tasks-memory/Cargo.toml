@@ -39,6 +39,7 @@ criterion = { workspace = true, features = ["async_tokio"] }
 lazy_static = { workspace = true }
 loom = "0.7.2"
 rand = { workspace = true, features = ["small_rng"] }
+regex = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
