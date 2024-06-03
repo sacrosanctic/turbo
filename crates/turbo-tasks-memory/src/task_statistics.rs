@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use dashmap::DashMap;
 use serde::{ser::SerializeMap, Serialize, Serializer};
@@ -6,10 +6,10 @@ use turbo_tasks::{backend::PersistentTaskType, registry, FunctionId, TraitTypeId
 
 #[derive(Default, Serialize)]
 struct TaskStatistics {
-    /// How many times the function was executed (roughly a cache miss)
+    /// How many times the function began execution (roughly a cache miss)
     execution_count: u32,
-    /// How many times the function was read (roughly a cache hit or a cache
-    /// miss)
+    /// How many times the function was read (either from cache, or after an
+    /// execution)
     finished_read_count: u32,
 }
 
@@ -50,23 +50,23 @@ impl AllTasksStatistics {
         self.inner.get().is_some()
     }
 
-    pub(crate) fn increment_execution_count(&self, task_type: &Arc<PersistentTaskType>) {
+    pub(crate) fn increment_execution_count(&self, task_type: &PersistentTaskType) {
         self.with_task_type_statistics(task_type, |stats| stats.execution_count += 1)
     }
 
-    pub(crate) fn increment_finished_read_count(&self, task_type: &Arc<PersistentTaskType>) {
+    pub(crate) fn increment_finished_read_count(&self, task_type: &PersistentTaskType) {
         self.with_task_type_statistics(task_type, |stats| stats.finished_read_count += 1)
     }
 
     fn with_task_type_statistics(
         &self,
-        task_type: &Arc<PersistentTaskType>,
+        task_type: &PersistentTaskType,
         func: impl Fn(&mut TaskStatistics),
     ) {
         if let Some(all_stats) = self.inner.get() {
             func(
                 all_stats
-                    .entry((&**task_type).into())
+                    .entry(task_type.into())
                     .or_insert(TaskStatistics::default())
                     .value_mut(),
             )
