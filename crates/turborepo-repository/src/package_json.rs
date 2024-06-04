@@ -58,8 +58,6 @@ pub struct RawPackageJson {
     pub dev_dependencies: Option<BTreeMap<String, UnescapedString>>,
     pub optional_dependencies: Option<BTreeMap<String, UnescapedString>>,
     pub peer_dependencies: Option<BTreeMap<String, UnescapedString>>,
-    #[deserializable(rename = "turbo")]
-    pub legacy_turbo_config: Option<serde_json::Value>,
     pub scripts: BTreeMap<String, UnescapedString>,
     pub resolutions: Option<BTreeMap<String, UnescapedString>>,
     pub pnpm: Option<RawPnpmConfig>,
