@@ -6,15 +6,12 @@ use turbo_tasks::{backend::PersistentTaskType, registry, FunctionId, TraitTypeId
 
 #[derive(Default, Serialize)]
 struct TaskStatistics {
-    /// How many times the function began execution (roughly a cache miss)
-    execution_count: u32,
-    /// How many times the function was read (either from cache, or after an
-    /// execution)
-    finished_read_count: u32,
+    cache_hit: u32,
+    cache_miss: u32,
 }
 
 /// A function or a trait method id.
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 enum TaskTypeId {
     FunctionId(FunctionId),
     TraitTypeId(TraitTypeId),
@@ -50,12 +47,12 @@ impl AllTasksStatistics {
         self.inner.get().is_some()
     }
 
-    pub(crate) fn increment_execution_count(&self, task_type: &PersistentTaskType) {
-        self.with_task_type_statistics(task_type, |stats| stats.execution_count += 1)
+    pub(crate) fn increment_cache_hit(&self, task_type: &PersistentTaskType) {
+        self.with_task_type_statistics(task_type, |stats| stats.cache_hit += 1)
     }
 
-    pub(crate) fn increment_finished_read_count(&self, task_type: &PersistentTaskType) {
-        self.with_task_type_statistics(task_type, |stats| stats.finished_read_count += 1)
+    pub(crate) fn increment_cache_miss(&self, task_type: &PersistentTaskType) {
+        self.with_task_type_statistics(task_type, |stats| stats.cache_miss += 1)
     }
 
     fn with_task_type_statistics(

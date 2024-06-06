@@ -535,8 +535,29 @@ impl Backend for MemoryBackend {
             self.lookup_and_connect_task(parent_task, &self.task_cache, &task_type, turbo_tasks)
         {
             // fast pass without creating a new task
+            match &*task_type {
+                PersistentTaskType::ResolveNative(..) | PersistentTaskType::Native(..) => {
+                    self.task_statistics().increment_cache_hit(&task_type);
+                }
+                PersistentTaskType::ResolveTrait(..) => {
+                    // this lookup recursively calls
+                    // `get_or_create_persistent_task` with `ResolveNative`, so
+                    // don't log it on this call, and attribute the cache hit to
+                    // the real function
+                }
+            }
             task
         } else {
+            match &*task_type {
+                PersistentTaskType::Native(..) => {
+                    self.task_statistics().increment_cache_miss(&task_type);
+                }
+                PersistentTaskType::ResolveTrait(..) | PersistentTaskType::ResolveNative(..) => {
+                    // these types re-execute themselves as `Native` after
+                    // resolving their arguments, skip counting their
+                    // executions here to avoid double-counting
+                }
+            }
             // It's important to avoid overallocating memory as this will go into the task
             // cache and stay there forever. We can to be as small as possible.
             let (task_type_hash, mut task_type) = PreHashed::into_parts(task_type);

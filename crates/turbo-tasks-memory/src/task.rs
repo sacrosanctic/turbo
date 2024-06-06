@@ -718,19 +718,6 @@ impl Task {
         aggregation_context.apply_queued_updates();
         self.clear_dependencies(dependencies, backend, turbo_tasks);
 
-        if let TaskType::Persistent { ty } = &self.ty {
-            match &***ty {
-                PersistentTaskType::Native(..) => {
-                    backend.task_statistics().increment_execution_count(ty);
-                }
-                PersistentTaskType::ResolveTrait(..) | PersistentTaskType::ResolveNative(..) => {
-                    // these types re-execute themselves as `Native` after
-                    // resolving their arguments, skip counting their
-                    // executions to avoid double-counting
-                }
-            }
-        }
-
         Some(TaskExecutionSpec { future, span })
     }
 
@@ -1457,21 +1444,6 @@ impl Task {
             Done { .. } => {
                 let result = func(&mut state.output)?;
                 drop(state);
-
-                if let TaskType::Persistent { ty } = &self.ty {
-                    match &***ty {
-                        PersistentTaskType::Native(..) => {
-                            backend.task_statistics().increment_finished_read_count(ty);
-                        }
-                        PersistentTaskType::ResolveTrait(..)
-                        | PersistentTaskType::ResolveNative(..) => {
-                            // these types are re-executed as `Native` after
-                            // resolving their arguments, skip counting their
-                            // executions to avoid double-counting
-                        }
-                    }
-                }
-
                 Ok(Ok(result))
             }
             Dirty {
