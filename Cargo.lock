@@ -10065,7 +10065,7 @@ dependencies = [
 
 [[package]]
 name = "turbo"
-version = "0.1.0"
+version = "2.0.2-canary.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -11192,7 +11192,7 @@ dependencies = [
 
 [[package]]
 name = "turborepo-lib"
-version = "0.1.0"
+version = "2.0.2-canary.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
