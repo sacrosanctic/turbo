@@ -1,90 +1,84 @@
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use dashmap::DashMap;
 use serde::{ser::SerializeMap, Serialize, Serializer};
-use turbo_tasks::{backend::PersistentTaskType, registry, FunctionId, TraitTypeId};
+use turbo_tasks::{registry, FunctionId};
 
-#[derive(Default, Serialize)]
-struct TaskStatistics {
-    cache_hit: u32,
-    cache_miss: u32,
-}
-
-/// A function or a trait method id.
-#[derive(Debug, Eq, Hash, PartialEq)]
-enum TaskTypeId {
-    FunctionId(FunctionId),
-    TraitTypeId(TraitTypeId),
-}
-
-impl From<&PersistentTaskType> for TaskTypeId {
-    fn from(value: &PersistentTaskType) -> Self {
-        match value {
-            PersistentTaskType::Native(id, _) | PersistentTaskType::ResolveNative(id, _) => {
-                Self::FunctionId(*id)
-            }
-            PersistentTaskType::ResolveTrait(id, _, _) => Self::TraitTypeId(*id),
-        }
-    }
-}
-
-// A type implementing [`serde::Serialize`] with information about all task
-// statistics.
-//
-// No statisitics are recorded unless [`AllTasksStatistics::enable`] is called.
+/// An API for optionally enabling, updating, and reading aggregated statistics.
 #[derive(Default)]
-pub struct AllTasksStatistics {
-    inner: OnceLock<DashMap<TaskTypeId, TaskStatistics>>,
+pub struct TaskStatisticsApi {
+    inner: OnceLock<Arc<TaskStatistics>>,
 }
 
-impl AllTasksStatistics {
+impl TaskStatisticsApi {
     pub fn enable(&self) {
         // ignore error: potentially already initialized, that's okay
-        let _ = self.inner.set(DashMap::new());
+        let _ = self.inner.set(Arc::new(TaskStatistics {
+            inner: DashMap::new(),
+        }));
     }
 
     pub fn is_enabled(&self) -> bool {
         self.inner.get().is_some()
     }
 
-    pub(crate) fn increment_cache_hit(&self, task_type: &PersistentTaskType) {
-        self.with_task_type_statistics(task_type, |stats| stats.cache_hit += 1)
+    // Calls `func` if statistics have been enabled (via
+    // [`TaskStatisticsApi::enable`]).
+    pub fn map<T>(&self, func: impl FnOnce(&Arc<TaskStatistics>) -> T) -> Option<T> {
+        self.get().map(func)
     }
 
-    pub(crate) fn increment_cache_miss(&self, task_type: &PersistentTaskType) {
-        self.with_task_type_statistics(task_type, |stats| stats.cache_miss += 1)
+    // Calls `func` if statistics have been enabled (via
+    // [`TaskStatisticsApi::enable`]).
+    pub fn get(&self) -> Option<&Arc<TaskStatistics>> {
+        self.inner.get()
+    }
+}
+
+/// A type representing the enabled state of [`TaskStatisticsApi`]. Implements
+/// [`serde::Serialize`].
+pub struct TaskStatistics {
+    inner: DashMap<FunctionId, TaskFunctionStatistics>,
+}
+
+impl TaskStatistics {
+    pub(crate) fn increment_cache_hit(&self, function_id: FunctionId) {
+        self.with_task_type_statistics(function_id, |stats| stats.cache_hit += 1)
+    }
+
+    pub(crate) fn increment_cache_miss(&self, function_id: FunctionId) {
+        self.with_task_type_statistics(function_id, |stats| stats.cache_miss += 1)
     }
 
     fn with_task_type_statistics(
         &self,
-        task_type: &PersistentTaskType,
-        func: impl Fn(&mut TaskStatistics),
+        task_function_id: FunctionId,
+        func: impl Fn(&mut TaskFunctionStatistics),
     ) {
-        if let Some(all_stats) = self.inner.get() {
-            func(
-                all_stats
-                    .entry(task_type.into())
-                    .or_insert(TaskStatistics::default())
-                    .value_mut(),
-            )
-        };
+        func(
+            self.inner
+                .entry(task_function_id)
+                .or_insert(TaskFunctionStatistics::default())
+                .value_mut(),
+        )
     }
 }
 
-impl Serialize for AllTasksStatistics {
+/// Statistics for an individual function.
+#[derive(Default, Serialize)]
+struct TaskFunctionStatistics {
+    cache_hit: u32,
+    cache_miss: u32,
+}
+
+impl Serialize for TaskStatistics {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let Some(inner) = self.inner.get() else {
-            return serializer.serialize_none();
-        };
-        let mut map = serializer.serialize_map(Some(inner.len()))?;
-        for entry in inner {
-            let key = match entry.key() {
-                TaskTypeId::FunctionId(id) => registry::get_function_global_name(*id),
-                TaskTypeId::TraitTypeId(id) => registry::get_trait_type_global_name(*id),
-            };
+        let mut map = serializer.serialize_map(Some(self.inner.len()))?;
+        for entry in &self.inner {
+            let key = registry::get_function_global_name(*entry.key());
             map.serialize_entry(key, entry.value())?;
         }
         map.end()

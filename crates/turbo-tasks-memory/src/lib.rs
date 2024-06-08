@@ -20,4 +20,4 @@ mod task_statistics;
 
 pub use memory_backend::MemoryBackend;
 pub use memory_backend_with_pg::MemoryBackendWithPersistedGraph;
-pub use task_statistics::AllTasksStatistics;
+pub use task_statistics::{TaskStatistics, TaskStatisticsApi};

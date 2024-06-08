@@ -27,7 +27,7 @@ async fn test_simple_task() {
             double(i).await.unwrap();
         }
         assert_eq!(
-            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            stats_json(&tt),
             json!({
                 "turbo-tasks-memory::::double": {
                     "cache_miss": 10,
@@ -47,7 +47,7 @@ async fn test_await_same_vc_multiple_times() {
         tokio::try_join!(dvc.into_future(), dvc.into_future()).unwrap();
         dvc.await.unwrap();
         assert_eq!(
-            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            stats_json(&tt),
             json!({
                 "turbo-tasks-memory::::double": {
                     "cache_miss": 1,
@@ -73,7 +73,7 @@ async fn test_vc_receiving_task() {
             double_vc(dvc).await.unwrap();
         }
         assert_eq!(
-            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            stats_json(&tt),
             json!({
                 "turbo-tasks-memory::::double": {
                     "cache_miss": 10,
@@ -94,8 +94,8 @@ async fn test_trait_methods() {
     run_with_tt(|tt| async move {
         for i in 0..10 {
             let wvc = wrap(i);
-            wvc.double().await.unwrap();
-            wvc.double_vc().await.unwrap();
+            tokio::try_join!(wvc.double().into_future(), wvc.double().into_future()).unwrap();
+            tokio::try_join!(wvc.double_vc().into_future(), wvc.double_vc().into_future()).unwrap();
         }
         // use cached results
         for i in 0..5 {
@@ -104,7 +104,7 @@ async fn test_trait_methods() {
             wvc.double_vc().await.unwrap();
         }
         assert_eq!(
-            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            stats_json(&tt),
             json!({
                 "turbo-tasks-memory::::wrap": {
                     "cache_miss": 10,
@@ -112,11 +112,11 @@ async fn test_trait_methods() {
                 },
                 "turbo-tasks-memory::::WrappedU64::Doublable::double": {
                     "cache_miss": 10,
-                    "cache_hit": 5,
+                    "cache_hit": 15,
                 },
                 "turbo-tasks-memory::::WrappedU64::Doublable::double_vc": {
                     "cache_miss": 10,
-                    "cache_hit": 0,
+                    "cache_hit": 15,
                 },
             })
         );
@@ -129,23 +129,23 @@ async fn test_dyn_trait_methods() {
     run_with_tt(|tt| async move {
         for i in 0..10 {
             let wvc: Vc<Box<dyn Doublable>> = Vc::upcast(wrap(i));
-            wvc.double().resolve().await.unwrap();
-            wvc.double_vc().resolve().await.unwrap();
+            let _ = tokio::try_join!(wvc.double().resolve(), wvc.double().resolve()).unwrap();
+            let _ = tokio::try_join!(wvc.double_vc().resolve(), wvc.double_vc().resolve()).unwrap();
         }
         // use cached results
         for i in 0..5 {
             let wvc: Vc<Box<dyn Doublable>> = Vc::upcast(wrap(i));
-            wvc.double().resolve().await.unwrap();
-            wvc.double_vc().resolve().await.unwrap();
+            let _ = wvc.double().resolve().await.unwrap();
+            let _ = wvc.double_vc().resolve().await.unwrap();
         }
         // use cached results without dynamic dispatch
         for i in 0..2 {
             let wvc = wrap(i);
-            wvc.double().await.unwrap();
-            wvc.double_vc().await.unwrap();
+            let _ = wvc.double().await.unwrap();
+            let _ = wvc.double_vc().await.unwrap();
         }
         assert_eq!(
-            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            stats_json(&tt),
             json!({
                 "turbo-tasks-memory::::wrap": {
                     "cache_miss": 10,
@@ -153,11 +153,11 @@ async fn test_dyn_trait_methods() {
                 },
                 "turbo-tasks-memory::::WrappedU64::Doublable::double": {
                     "cache_miss": 10,
-                    "cache_hit": 7,
+                    "cache_hit": 17,
                 },
                 "turbo-tasks-memory::::WrappedU64::Doublable::double_vc": {
                     "cache_miss": 10,
-                    "cache_hit": 7,
+                    "cache_hit": 17,
                 },
             })
         );
@@ -172,7 +172,7 @@ async fn test_no_execution() {
         // don't await this!
         let _ = wrap_vc(double_vc(double(123))).double().double_vc();
         assert_eq!(
-            remove_hashes(serde_json::to_value(tt.backend().task_statistics()).unwrap()),
+            stats_json(&tt),
             json!({
                 "turbo-tasks-memory::::double": {
                     "cache_miss": 1,
@@ -249,6 +249,10 @@ where
     })
     .await
     .unwrap();
+}
+
+fn stats_json(tt: &TurboTasks<MemoryBackend>) -> serde_json::Value {
+    remove_hashes(serde_json::to_value(tt.backend().task_statistics().get()).unwrap())
 }
 
 // Global task identifiers can contain a hash of the crate and dependencies.
