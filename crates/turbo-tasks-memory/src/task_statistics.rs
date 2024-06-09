@@ -11,11 +11,12 @@ pub struct TaskStatisticsApi {
 }
 
 impl TaskStatisticsApi {
-    pub fn enable(&self) {
+    pub fn enable(&self) -> &Arc<TaskStatistics> {
         // ignore error: potentially already initialized, that's okay
         let _ = self.inner.set(Arc::new(TaskStatistics {
             inner: DashMap::new(),
         }));
+        self.inner.get().unwrap()
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -55,12 +56,7 @@ impl TaskStatistics {
         task_function_id: FunctionId,
         func: impl Fn(&mut TaskFunctionStatistics),
     ) {
-        func(
-            self.inner
-                .entry(task_function_id)
-                .or_insert(TaskFunctionStatistics::default())
-                .value_mut(),
-        )
+        func(self.inner.entry(task_function_id).or_default().value_mut())
     }
 }
 

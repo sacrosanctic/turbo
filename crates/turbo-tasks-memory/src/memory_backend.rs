@@ -560,7 +560,7 @@ impl Backend for MemoryBackend {
                         .first()
                         .cloned()
                         .expect("No arguments for trait call");
-                    let stats = Arc::clone(&stats);
+                    let stats = Arc::clone(stats);
                     turbo_tasks.run_once(Box::pin(async move {
                         let function_id =
                             PersistentTaskType::resolve_trait_method(trait_type, name, this)
