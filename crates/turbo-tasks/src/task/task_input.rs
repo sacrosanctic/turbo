@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 
+use super::concrete_task_input::TypedSharedValue;
 use crate::{
     magic_any::MagicAny, ConcreteTaskInput, RawVc, RcStr, SharedValue, TaskId, TransientInstance,
     TransientValue, TypedForInput, Value, ValueTypeId, Vc, VcValueType,
@@ -245,7 +246,7 @@ where
     fn try_from_concrete(input: &ConcreteTaskInput) -> Result<Self> {
         match input {
             ConcreteTaskInput::SharedValue(value) => {
-                let v = value.1.downcast_ref::<T>().ok_or_else(|| {
+                let v = value.1 .0.downcast_ref::<T>().ok_or_else(|| {
                     anyhow!(
                         "invalid task input type, expected {} got {:?}",
                         type_name::<T>(),
@@ -260,7 +261,10 @@ where
 
     fn into_concrete(self) -> ConcreteTaskInput {
         let raw_value: T = self.into_value();
-        ConcreteTaskInput::SharedValue(SharedValue(T::get_value_type_id(), Arc::new(raw_value)))
+        ConcreteTaskInput::SharedValue(TypedSharedValue(
+            T::get_value_type_id(),
+            SharedValue(Arc::new(raw_value)),
+        ))
     }
 }
 
@@ -270,8 +274,8 @@ where
 {
     fn try_from_concrete(input: &ConcreteTaskInput) -> Result<Self> {
         match input {
-            ConcreteTaskInput::TransientSharedValue(value) => {
-                let v = value.1.downcast_ref::<T>().ok_or_else(|| {
+            ConcreteTaskInput::TransientSharedReference(value) => {
+                let v = value.0.downcast_ref::<T>().ok_or_else(|| {
                     anyhow!(
                         "invalid task input type, expected {} got {:?}",
                         type_name::<T>(),
@@ -280,13 +284,19 @@ where
                 })?;
                 Ok(TransientValue::new(v.clone()))
             }
-            _ => bail!("invalid task input type, expected {}", type_name::<T>()),
+            other => {
+                bail!(
+                    "invalid task input type, expected {}, ogt {:?}",
+                    type_name::<T>(),
+                    other
+                )
+            }
         }
     }
 
     fn into_concrete(self) -> ConcreteTaskInput {
         let raw_value: T = self.into_value();
-        ConcreteTaskInput::TransientSharedValue(SharedValue((), Arc::new(raw_value)))
+        ConcreteTaskInput::TransientSharedValue(SharedValue(Arc::new(raw_value)))
     }
 }
 
@@ -297,7 +307,7 @@ where
     fn try_from_concrete(input: &ConcreteTaskInput) -> Result<Self> {
         match input {
             ConcreteTaskInput::SharedReference(reference) => {
-                if let Ok(i) = reference.untyped().try_into() {
+                if let Ok(i) = reference.1.clone().try_into() {
                     Ok(i)
                 } else {
                     bail!(

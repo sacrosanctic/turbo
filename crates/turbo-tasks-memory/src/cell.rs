@@ -7,7 +7,7 @@ use auto_hash_map::AutoSet;
 use turbo_tasks::{
     backend::CellContent,
     event::{Event, EventListener},
-    TaskId, TaskIdSet, TurboTasksBackendApi, ValueTypeId,
+    TaskId, TaskIdSet, TurboTasksBackendApi,
 };
 
 use crate::MemoryBackend;
@@ -36,7 +36,7 @@ pub(crate) enum Cell {
     /// GC operation will transition to the TrackedValueless state.
     Value {
         dependent_tasks: TaskIdSet,
-        content: CellContent<ValueTypeId>,
+        content: CellContent,
     },
 }
 
@@ -99,7 +99,7 @@ impl Cell {
         reader: TaskId,
         description: impl Fn() -> String + Sync + Send + 'static,
         note: impl Fn() -> String + Sync + Send + 'static,
-    ) -> Result<CellContent<ValueTypeId>, RecomputingCell> {
+    ) -> Result<CellContent, RecomputingCell> {
         if let Cell::Value {
             content,
             dependent_tasks,
@@ -123,7 +123,7 @@ impl Cell {
         &mut self,
         description: impl Fn() -> String + Sync + Send + 'static,
         note: impl Fn() -> String + Sync + Send + 'static,
-    ) -> Result<CellContent<ValueTypeId>, RecomputingCell> {
+    ) -> Result<CellContent, RecomputingCell> {
         match self {
             Cell::Empty => {
                 let listener = self.recompute(AutoSet::default(), description, note);
@@ -159,18 +159,21 @@ impl Cell {
     ///
     /// INVALIDATION: Be careful with this, it will not track
     /// dependencies, so using it could break cache invalidation.
-    pub fn read_own_content_untracked(&self) -> CellContent<ValueTypeId> {
+    pub fn read_own_content_untracked(&self) -> CellContent {
         match self {
             Cell::Empty | Cell::Recomputing { .. } | Cell::TrackedValueless { .. } => {
                 CellContent(None)
             }
-            Cell::Value { content, .. } => content.clone(),
+            Cell::Value { content, .. } => content.to_owned(),
         }
     }
 
+    /// Safety: This funtion does not check if the type of the content is the
+    /// same as the type of the cell. It is the caller's responsibility to
+    /// ensure that the content is of the correct type.
     pub fn assign(
         &mut self,
-        content: CellContent<ValueTypeId>,
+        content: CellContent,
         turbo_tasks: &dyn TurboTasksBackendApi<MemoryBackend>,
     ) {
         match self {
@@ -247,7 +250,7 @@ impl Cell {
     /// Takes the content out of the cell. Make sure to drop the content outside
     /// of the task state lock.
     #[must_use]
-    pub fn gc_content(&mut self) -> Option<CellContent<ValueTypeId>> {
+    pub fn gc_content(&mut self) -> Option<CellContent> {
         match self {
             Cell::Empty | Cell::Recomputing { .. } | Cell::TrackedValueless { .. } => None,
             Cell::Value {

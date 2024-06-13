@@ -18,9 +18,8 @@ use tracing::Span;
 pub use crate::id::BackendJobId;
 use crate::{
     event::EventListener, manager::TurboTasksBackendApi, raw_vc::CellId, registry,
-    task::concrete_task_input::TypeData, ConcreteTaskInput, FunctionId, RawVc, ReadRef,
-    SharedReference, TaskId, TaskIdProvider, TaskIdSet, TraitRef, TraitTypeId, ValueTypeId,
-    VcValueTrait, VcValueType,
+    ConcreteTaskInput, FunctionId, RawVc, ReadRef, SharedReference, TaskId, TaskIdProvider,
+    TaskIdSet, TraitRef, TraitTypeId, ValueTypeId, VcValueTrait, VcValueType,
 };
 
 pub enum TaskType {
@@ -134,34 +133,12 @@ pub struct TaskExecutionSpec {
     pub span: Span,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct CellContent(pub Option<SharedReference>);
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CellContent<T: TypeData>(pub Option<SharedReference<T>>);
+pub struct TypedCellContent(pub ValueTypeId, pub CellContent);
 
-impl<T: TypeData> Default for CellContent<T> {
-    fn default() -> Self {
-        Self(None)
-    }
-}
-
-impl Serialize for CellContent<ValueTypeId> {
-    fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.0.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for CellContent<ValueTypeId> {
-    fn deserialize<D>(deserializer: D) -> std::prelude::v1::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Option::deserialize(deserializer).map(Self)
-    }
-}
-
-impl Display for CellContent<ValueTypeId> {
+impl Display for CellContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
             None => write!(f, "empty"),
@@ -170,9 +147,9 @@ impl Display for CellContent<ValueTypeId> {
     }
 }
 
-impl CellContent<ValueTypeId> {
+impl TypedCellContent {
     pub fn cast<T: Any + VcValueType>(self) -> Result<ReadRef<T>> {
-        let data = self.0.ok_or_else(|| anyhow!("Cell is empty"))?;
+        let data = self.1 .0.ok_or_else(|| anyhow!("Cell is empty"))?;
         let data = data
             .downcast()
             .ok_or_else(|| anyhow!("Unexpected type in cell"))?;
@@ -181,44 +158,37 @@ impl CellContent<ValueTypeId> {
 
     /// # Safety
     ///
-    /// The caller must ensure that the CellContent<ValueTypeId> contains a vc
+    /// The caller must ensure that the TypedCellContent contains a vc
     /// that implements T.
     pub fn cast_trait<T>(self) -> Result<TraitRef<T>>
     where
         T: VcValueTrait + ?Sized,
     {
-        let shared_reference = self.0.ok_or_else(|| anyhow!("Cell is empty"))?;
+        let shared_reference = self
+            .1
+             .0
+            .ok_or_else(|| anyhow!("Cell is empty"))?
+            .typed(self.0);
         Ok(
-            // Safety: It is a SharedReference<ValueTypeId>
+            // Safety: It is a TypedSharedReference
             TraitRef::new(shared_reference),
         )
     }
 
     pub fn try_cast<T: Any + VcValueType>(self) -> Option<ReadRef<T>> {
-        self.0
+        self.1
+             .0
             .and_then(|data| data.downcast().map(|data| ReadRef::new(data)))
+    }
+
+    pub fn into_untyped(self) -> CellContent {
+        self.1
     }
 }
 
-impl<T: TypeData> CellContent<T> {
-    pub fn typed(&self, type_id: ValueTypeId) -> CellContent<ValueTypeId> {
-        match &self.0 {
-            None => CellContent(None),
-            Some(data) => {
-                let data = data.typed(type_id);
-                CellContent(Some(data))
-            }
-        }
-    }
-
-    pub fn untyped(&self) -> CellContent<()> {
-        match &self.0 {
-            None => CellContent(None),
-            Some(data) => {
-                let data = data.untyped();
-                CellContent(Some(data))
-            }
-        }
+impl CellContent {
+    pub fn into_typed(self, type_id: ValueTypeId) -> TypedCellContent {
+        TypedCellContent(type_id, self)
     }
 }
 
@@ -303,7 +273,7 @@ pub trait Backend: Sync + Send {
         index: CellId,
         reader: TaskId,
         turbo_tasks: &dyn TurboTasksBackendApi<Self>,
-    ) -> Result<Result<CellContent<ValueTypeId>, EventListener>>;
+    ) -> Result<Result<TypedCellContent, EventListener>>;
 
     /// INVALIDATION: Be careful with this, it will not track dependencies, so
     /// using it could break cache invalidation.
@@ -312,7 +282,7 @@ pub trait Backend: Sync + Send {
         task: TaskId,
         index: CellId,
         turbo_tasks: &dyn TurboTasksBackendApi<Self>,
-    ) -> Result<Result<CellContent<ValueTypeId>, EventListener>>;
+    ) -> Result<Result<TypedCellContent, EventListener>>;
 
     /// INVALIDATION: Be careful with this, it will not track dependencies, so
     /// using it could break cache invalidation.
@@ -321,10 +291,10 @@ pub trait Backend: Sync + Send {
         current_task: TaskId,
         index: CellId,
         turbo_tasks: &dyn TurboTasksBackendApi<Self>,
-    ) -> Result<CellContent<ValueTypeId>> {
+    ) -> Result<TypedCellContent> {
         match self.try_read_task_cell_untracked(current_task, index, turbo_tasks)? {
             Ok(content) => Ok(content),
-            Err(_) => Ok(CellContent(None)),
+            Err(_) => Ok(TypedCellContent(index.type_id, CellContent(None))),
         }
     }
 
@@ -357,7 +327,7 @@ pub trait Backend: Sync + Send {
         &self,
         task: TaskId,
         index: CellId,
-        content: CellContent<ValueTypeId>,
+        content: CellContent,
         turbo_tasks: &dyn TurboTasksBackendApi<Self>,
     );
 

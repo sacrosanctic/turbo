@@ -16,7 +16,7 @@ use anyhow::{anyhow, Result};
 use auto_hash_map::AutoMap;
 use futures::FutureExt;
 use turbo_tasks::{
-    backend::CellContent,
+    backend::{CellContent, TypedCellContent},
     event::{Event, EventListener},
     registry,
     test_helpers::with_turbo_tasks_for_testing,
@@ -33,7 +33,7 @@ enum Task {
 #[derive(Default)]
 pub struct VcStorage {
     this: Weak<Self>,
-    cells: Mutex<HashMap<(TaskId, CellId), CellContent<()>>>,
+    cells: Mutex<HashMap<(TaskId, CellId), CellContent>>,
     tasks: Mutex<Vec<Task>>,
 }
 
@@ -169,33 +169,35 @@ impl TurboTasksApi for VcStorage {
         &self,
         task: TaskId,
         index: CellId,
-    ) -> Result<Result<CellContent<ValueTypeId>, EventListener>> {
+    ) -> Result<Result<TypedCellContent, EventListener>> {
         let map = self.cells.lock().unwrap();
-        if let Some(cell) = map.get(&(task, index)) {
-            Ok(Ok(cell.typed(index.type_id)))
+        Ok(Ok(if let Some(cell) = map.get(&(task, index)) {
+            cell.clone()
         } else {
-            Ok(Ok(CellContent::default()))
+            Default::default()
         }
+        .into_typed(index.type_id)))
     }
 
     fn try_read_task_cell_untracked(
         &self,
         task: TaskId,
         index: CellId,
-    ) -> Result<Result<CellContent<ValueTypeId>, EventListener>> {
+    ) -> Result<Result<TypedCellContent, EventListener>> {
         let map = self.cells.lock().unwrap();
-        if let Some(cell) = map.get(&(task, index)) {
-            Ok(Ok(cell.typed(index.type_id)))
+        Ok(Ok(if let Some(cell) = map.get(&(task, index)) {
+            cell.to_owned()
         } else {
-            Ok(Ok(CellContent::default()))
+            Default::default()
         }
+        .into_typed(index.type_id)))
     }
 
     fn try_read_own_task_cell_untracked(
         &self,
         current_task: TaskId,
         index: CellId,
-    ) -> Result<CellContent<ValueTypeId>> {
+    ) -> Result<TypedCellContent> {
         self.read_own_task_cell(current_task, index)
     }
 
@@ -224,19 +226,20 @@ impl TurboTasksApi for VcStorage {
         unimplemented!()
     }
 
-    fn read_own_task_cell(&self, task: TaskId, index: CellId) -> Result<CellContent<ValueTypeId>> {
+    fn read_own_task_cell(&self, task: TaskId, index: CellId) -> Result<TypedCellContent> {
         let map = self.cells.lock().unwrap();
-        if let Some(cell) = map.get(&(task, index)) {
-            Ok(cell.typed(index.type_id))
+        Ok(if let Some(cell) = map.get(&(task, index)) {
+            cell.to_owned()
         } else {
-            Ok(CellContent::default())
+            Default::default()
         }
+        .into_typed(index.type_id))
     }
 
-    fn update_own_task_cell(&self, task: TaskId, index: CellId, content: CellContent<ValueTypeId>) {
+    fn update_own_task_cell(&self, task: TaskId, index: CellId, content: CellContent) {
         let mut map = self.cells.lock().unwrap();
         let cell = map.entry((task, index)).or_default();
-        *cell = content.untyped();
+        *cell = content;
     }
 
     fn connect_task(&self, _task: TaskId) {
