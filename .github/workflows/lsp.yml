@@ -60,11 +60,10 @@ jobs:
         uses: ./.github/actions/setup-capnproto
 
       - name: Rust Setup
-        uses: actions-rs/toolchain@v1
+        uses: ./.github/actions/setup-rust
         with:
-          profile: minimal
-          override: true
-          target: ${{ matrix.settings.target }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          targets: ${{ matrix.settings.target }}
 
       - name: Build Setup
         shell: bash
